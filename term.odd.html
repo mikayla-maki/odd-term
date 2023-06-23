@@ -14,7 +14,48 @@
     // shell: glob expansion
     // Demo: Actually integrating odd
 
+    class History {
+        constructor() {
+            this.history = [];
+            this.cursor = 0;
+        }
 
+        get length() {
+            return this.history.length;
+        }
+
+        reset() {
+            this.cursor = this.length;
+        }
+
+        push(program) {
+            if (program.trim() == "") {
+                return;
+            }
+
+            this.history.push(program);
+        }
+
+        canNavigate() {
+            return this.cursor != this.length;
+        }
+
+        navigateBackwards() {
+            this.cursor = saturating_sub(this.cursor, 1);
+        }
+
+        navigateForwards() {
+            this.cursor = saturating_add(this.cursor, 1, this.length);
+        }
+
+        current() {
+            if (this.cursor == this.length) {
+                return [];
+            } else {
+                return this.history[this.cursor].split("");
+            }
+        }
+    }
 
     console.dir(odd);
 
@@ -26,6 +67,8 @@
     let cursor_container = null;
     let cursor_spacer = null;
     let cursor_element = null;
+
+    let history = new History();
 
     function make_cursors() {
         cursor_container = document.createElement("span");
@@ -90,21 +133,15 @@
         prompt_element.innerHTML = process_text(prompt_text())
     }
 
-    let history = [];
-    let history_cursor = 0;
-
-    function default_history_cursor() {
-        return history.length;
-    }
-
     async function enter() {
         let program = buffer.join("");
         buffer = [];
         cursor = 0;
         cursor_container.innerHTML = "";
         content.append(document.createElement("br"));
+
         history.push(program);
-        history_cursor = default_history_cursor();
+        history.reset();
 
         await run_program(program.split(" "));
 
@@ -137,7 +174,6 @@
         }
     }
 
-
     function saturating_add(a, b, limit) {
         let result = a + b;
         if (result > limit) {
@@ -147,28 +183,27 @@
         }
     }
 
+    function navigateHistory(history, cb) {
+        if (history.canNavigate() || buffer.join("").trim().length == 0) {
+            cb(history);
+
+            buffer = history.current();
+            cursor = buffer.length;
+
+            flush_edit_buffer();
+        }
+    }
+
     content.addEventListener("keydown", async (event) => {
         event.preventDefault();
         console.log(event.code);
-        if (event.code != "ArrowUp" && event.code != "ArrowDown") {
-            history_cursor = default_history_cursor();
-        } else {
-            if (history.length > 0 && (history_cursor != default_history_cursor() || buffer.join("").trim().length == 0)) {
-                if (event.code == "ArrowUp") {
-                    history_cursor = saturating_sub(history_cursor, 1);
-                } else {
-                    history_cursor = saturating_add(history_cursor, 1, default_history_cursor());
-                }
 
-                if (history_cursor == default_history_cursor()) {
-                    buffer = [];
-                } else {
-                    buffer = history[history_cursor].split("");
-                }
-                cursor = buffer.length;
-                flush_edit_buffer();
-            }
-            return;
+        if (event.code == "ArrowUp") {
+            return navigateHistory(history, (history) => history.navigateBackwards());
+        } else if (event.code == "ArrowDown") {
+            return navigateHistory(history, (history) => history.navigateForwards());
+        } else {
+            history.reset();
         }
 
         switch (event.code) {
