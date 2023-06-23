@@ -8,10 +8,14 @@
     style="background-color: black; font-family: monospace; color: white; margin: 20vh 20vw; font-size: 18px;">
 
 </body>
-<script>
+<script type="module">
+    import * as odd from "./odd.esm.min.js";
     // terminal: Add line wrapping to 'program_print' and cursor
     // shell: glob expansion
     // Demo: Actually integrating odd
+
+    console.dir(odd);
+
     const content = document.getElementById("content");
     let buffer = [];
     let cursor = 0
@@ -41,10 +45,10 @@
         buffer_element.innerHTML = process_text(buffer.join(""));
 
         let cursor_spaces = "";
-        for (i = 0; i < cursor; i++) {
+        for (var i = 0; i < cursor; i++) {
             cursor_spaces += "\xa0";
         }
-        for (i = 0; i < prompt_text().length; i++) {
+        for (var i = 0; i < prompt_text().length; i++) {
             cursor_spaces += "\xa0";
         }
 
@@ -58,7 +62,7 @@
     function write(text) {
         let length = text.length;
         let text_array = text.split("")
-        for (i = 0; i < text_array.length; i++) {
+        for (var i = 0; i < text_array.length; i++) {
             buffer.splice(cursor + i, 0, text_array[i]);
         }
         cursor += length;
