@@ -221,7 +221,7 @@
         }
 
         for (var i = 0; i < programs.length; i++) {
-          let program = programs[i];
+            let program = programs[i];
 
             if (argv[0] == program.name) {
                 program.call(argv)
@@ -249,11 +249,11 @@
     })
 
     register_exe("cd", (argv) => {
-      console.dir(argv[1]);
+        console.dir(argv[1]);
         if (argv[1] != null) {
-          directory_stack.push(argv[1])
+            directory_stack.push(argv[1])
         } else {
-          println("ERROR: No directory specified")
+            println("ERROR: No directory specified")
         }
     })
 
@@ -264,7 +264,7 @@
             program = await odd.program({
                 namespace: {creator: "Mikayla", name: "OddTerminal"}
 
-            }).catch(e  rror => {
+            }).catch(error => {
                 println(error)
             })
             println("Finished!")
