@@ -131,7 +131,11 @@
     function prompt_text() {
         let result = ""
         if (context.user) {
-            result += "@" + context.user;
+            result += "@" + context.user + ":";
+        }
+        result += "~";
+        if (context.cwd.length > 0) {
+            result += "/";
         }
         return result + context.cwd.join("/") + " > ";
     }

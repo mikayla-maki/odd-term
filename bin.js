@@ -1,11 +1,16 @@
 class Commands {
   constructor(commands) {
     this.commands = commands;
+    this.middleware = null;
     this.on_startup_programs = [];
   }
 
-  register(name, handler) {
+  register_command(name, handler) {
     this.commands[name] = handler;
+  }
+
+  set_middleware(middleware) {
+    this.middleware = middleware
   }
 
   on_startup(handler) {
@@ -24,10 +29,21 @@ class Commands {
       return;
     }
 
-    if (name in this.commands) {
-      return await this.commands[name](argv, sys);
-    } else {
+    try {
+      if (name in this.commands) {
+        let command = async (sys) => await this.commands[name](argv, sys);
+        if (this.middleware) {
+          await this.middleware(program, command, sys)
+        } else {
+          await command(sys)
+        }
+
+        return;
+      }
+
       return sys.println("Command not found: " + name);
+    } catch (error) {
+      sys.println("Command terminated with an exception: " + error)
     }
   }
 }
