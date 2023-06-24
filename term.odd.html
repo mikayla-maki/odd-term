@@ -140,27 +140,99 @@
         prompt_element.innerHTML = process_text(prompt_text())
     }
 
-    let sys = null;
-    function get_sys() {
-        if (sys == null) {
-            sys = {print, println, context}
+    function make_sys() {
+        return {print, println, context}
+    }
+
+    function arg_split(argv_string) {
+        let argv = []
+        let literal_char = null;
+        let arg = "";
+        for (let i = 0; i < argv_string.length; i++) {
+            let char = argv_string[i];
+
+            if (!literal_char && char == " ") {
+                if (arg != "") {
+                    argv.push(arg);
+                }
+                arg = ""
+                continue;
+            }
+            if (!literal_char && (char == "\"" || char == "\'")) {
+                literal_char = char
+                continue;
+            }
+            if (literal_char && char == literal_char) {
+                literal_char = null
+                continue;
+            }
+
+            arg += char;
         }
-        return sys
+        if (arg.trim() != "") {
+          argv.push(arg);
+        }
+
+        return argv
+    }
+
+    function parse_programs(program_buffer) {
+        let cur_program = ""
+        let programs = [];
+        for (let i = 0; i < program_buffer.length; i++) {
+            let char = program_buffer[i];
+
+            if (char == ">") {
+                let program = {
+                    argv: arg_split(cur_program),
+                    stdout: "",
+                    stdin: null,
+                };
+                let file_name = "";
+
+                for (let j = i + 1; j < program_buffer.length; j++) {
+                    i = j;
+                    if (char == " ") {
+                        break;
+                    } else {
+                        file_name += program_buffer[j]
+                    }
+                }
+                program.stdout = file_name.trim();
+                programs.push(program);
+                cur_program = "";
+                continue;
+            }
+
+            cur_program += char;
+        }
+
+        if (cur_program != "") {
+            programs.push({
+                argv: arg_split(cur_program),
+                stdout: null,
+                stdin: null
+            })
+        }
+
+        return programs;
     }
 
     async function enter(commands) {
-        let program = buffer.join("");
+        let command = [...buffer];
         buffer = [];
         cursor = 0;
         cursor_container.innerHTML = "";
         content.append(document.createElement("br"));
 
-        history.push(program);
+        history.push(command.join(""));
         history.reset();
 
-        let argv = program.split(" ");
-        console.dir(commands);
-        await commands.invoke(argv[0], argv, get_sys());
+        let programs = parse_programs(command)
+        console.dir(programs);
+        for (const program of programs) {
+            await commands.invoke(program, make_sys());
+        }
 
         make_cursors();
         prompt_element = document.createElement("span");
@@ -263,7 +335,7 @@
         content.append(document.createElement("br"));
     }
 
-    await Promise.all(commands.on_startup_programs.map((program) => program(get_sys())))
+    await Promise.all(commands.on_startup_programs.map((program) => program(make_sys())))
 
     make_cursors()
     buffer_element.style.zIndex = 1;
