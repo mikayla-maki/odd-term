@@ -7,12 +7,12 @@ if [ -e "certs/$CURRENT_IP.key" ]
 then
     echo "Not making cert"
 else
-    echo "Making cert"
     pushd certs
+    echo "Making cert"
     mkcert $CURRENT_IP
     mv $CURRENT_IP-key.pem $CURRENT_IP.key
+    echo "Done making cert"
     popd
 fi
 
-python3 server.py localhost 8082 &
-python3 server.py $CURRENT_IP 8081
+(trap 'kill 0' SIGINT; python3 server.py localhost 8082 & python3 server.py $CURRENT_IP 8081)

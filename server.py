@@ -5,7 +5,11 @@ import sys
 
 def run(which="localhost", port=8081, server_class=HTTPServer, handler_class=SimpleHTTPRequestHandler):
     server_address = (which, port)
-    httpd = server_class(server_address, handler_class)
+    try:
+        httpd = server_class(server_address, handler_class)
+    except Exception as e:
+        print("Failed to launch: " + which + ":" + str(port))
+        raise e
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.load_cert_chain("certs/" + which + '.pem', "certs/" + which + '.key')
     httpd.socket = context.wrap_socket (httpd.socket)
