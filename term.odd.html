@@ -5,12 +5,12 @@
 </head>
 
 <body id="content"
-    style="background-color: black; font-family: monospace; color: white; margin: 20vh 20vw; font-size: 18px;">
+    style="background-color: black; font-family: monospace; color: white; margin: 20vh 20vw; font-size: 18px; overflow-wrap: anywhere;">
 
 </body>
 <script type="module">
     import * as odd from "./odd.esm.min.js";
-    import { commands } from "./bin.js";
+    import {commands} from "./bin.js";
     // terminal: Add line wrapping to 'program_print' and cursor
     // shell: glob expansion
     // Demo: Actually integrating odd
@@ -85,9 +85,6 @@
         cursor_element.style.opacity = 0.5;
     }
 
-    make_cursors()
-    buffer_element.style.zIndex = 1;
-    content.append(cursor_container, prompt_element, buffer_element);
 
     function flush_edit_buffer() {
         buffer_element.innerHTML = process_text(buffer.join(""));
@@ -126,14 +123,29 @@
         flush_edit_buffer();
     }
 
-    const directory_stack = [];
+    const context = {
+        cwd: [],
+        user: null
+    };
 
     function prompt_text() {
-        return directory_stack.join("/") + " > ";
+        let result = ""
+        if (context.user) {
+            result += "@" + context.user;
+        }
+        return result + context.cwd.join("/") + " > ";
     }
 
     function prompt() {
         prompt_element.innerHTML = process_text(prompt_text())
+    }
+
+    let sys = null;
+    function get_sys() {
+        if (sys == null) {
+            sys = {print, println, context}
+        }
+        return sys
     }
 
     async function enter(commands) {
@@ -148,7 +160,7 @@
 
         let argv = program.split(" ");
         console.dir(commands);
-        await commands.invoke(argv[0], argv, {print, println, directory_stack});
+        await commands.invoke(argv[0], argv, get_sys());
 
         make_cursors();
         prompt_element = document.createElement("span");
@@ -157,9 +169,6 @@
         flush_edit_buffer();
         content.append(cursor_container, prompt_element, buffer_element);
     }
-
-    prompt();
-    flush_edit_buffer();
 
     function saturating_sub(a, b) {
         let result = a - b;
@@ -253,6 +262,15 @@
         print(text);
         content.append(document.createElement("br"));
     }
+
+    await Promise.all(commands.on_startup_programs.map((program) => program(get_sys())))
+
+    make_cursors()
+    buffer_element.style.zIndex = 1;
+    content.append(cursor_container, prompt_element, buffer_element);
+    prompt();
+    flush_edit_buffer();
+
 </script>
 
 </html>
