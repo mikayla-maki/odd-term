@@ -14,7 +14,6 @@ export function odd_commands(commands) {
         debug: true,
       }).catch(error => {
         logger("Error starting ODD: " + error)
-
       })
     }
     return odd_program
@@ -144,10 +143,16 @@ export function odd_commands(commands) {
       eval(js)
     })
 
-    async function make_sys(stdout_file, sys) {
+    async function make_sys(stdout_file, stdin_file, sys) {
       if (stdout_file) {
         let path = file_path(sys, stdout_file);
         let buffer = ""
+        let read_buffer = null;
+        if(stdin_file) {
+          let stdin_path = file_path(sys, stdin_file);
+          let stdin_result = await program.session.fs.read(stdin_path);
+          read_buffer = (new TextDecoder("utf-8")).decode(stdin_result)
+        }
         return {
           sys: {
             print: (text) => {
@@ -156,6 +161,7 @@ export function odd_commands(commands) {
             println: (text) => {
               buffer += text + "\n";
             },
+            read: () => { return read_buffer },
             context: sys.context
           },
           flush: async () => {
@@ -169,7 +175,7 @@ export function odd_commands(commands) {
     }
 
     commands.set_middleware(async (program, command, sys) => {
-      let odd_sys = await make_sys(program.stdout, sys)
+      let odd_sys = await make_sys(program.stdout, program.stdin, sys)
       await command(odd_sys.sys)
       await odd_sys.flush()
     })

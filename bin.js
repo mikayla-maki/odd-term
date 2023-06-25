@@ -20,8 +20,14 @@ class Commands {
   async invoke(program, sys) {
     let argv = program.argv;
 
-    if (program.stdout) {
-      sys.println("stdout: " + program.stdout)
+    console.dir(sys);
+    if (sys.env.hasOwnProperty("DEBUG")) {
+      if (program.stdout) {
+        sys.println("stdout: " + program.stdout)
+      }
+      if (program.stdin) {
+        sys.println("stdin: " + program.stdin)
+      }
     }
 
     const name = argv[0];
@@ -78,8 +84,12 @@ export let commands = new Commands({
     if (argv.length != 2) {
       throw Error("Cannot specify any other arguments")
     }
+    let input = sys.read();
+    if (input == null) {
+      throw Error("No input")
+    }
 
-    let lines = sys.read().split("\n");
+    let lines = input.split("\n");
     for (let i = 0; i < lines.length; i++) {
       sys.println(i + ": " + lines[i]);
     }

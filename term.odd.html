@@ -5,7 +5,7 @@
 </head>
 
 <body id="content"
-    style="background-color: black; font-family: monospace; color: white; margin: 20vh 20vw; font-size: 18px; overflow-wrap: anywhere;">
+    style="white-space: pre; z-index: 1;background-color: black; font-family: monospace; color: white; margin: 20vh 20vw; font-size: 18px; overflow-wrap: anywhere;margin-top: 0;">
 
 </body>
 <script type="module">
@@ -58,8 +58,6 @@
         }
     }
 
-    console.dir(odd);
-
     const content = document.getElementById("content");
     let buffer = [];
     let cursor = 0
@@ -77,14 +75,32 @@
         cursor_container = document.createElement("span");
         cursor_spacer = document.createElement("span");
         cursor_element = document.createElement("span");
+        cursor_container.classList.add("cursor-container");
+        cursor_spacer.classList.add("cursor-spacer");
+        cursor_element.classList.add("cursor");
         cursor_container.append(cursor_spacer, cursor_element);
         cursor_element.append("\xa0");
+        cursor_container.style.userSelect = "none";
         cursor_container.style.position = "absolute";
+        cursor_container.style.zIndex = 0;
+        cursor_element.style.userSelect = "none";
+        cursor_element.style.userSelect = "none";
         cursor_element.style.backgroundColor = "white";
-        cursor_element.style.zIndex = 0;
         cursor_element.style.opacity = 0.5;
     }
 
+    // https://stackoverflow.com/a/22480938
+    function isScrolledIntoView(el) {
+        var rect = el.getBoundingClientRect();
+        var elemTop = rect.top;
+        var elemBottom = rect.bottom;
+
+        // Only completely visible elements return true:
+        var isVisible = (elemTop >= 0) && (elemBottom <= window.innerHeight);
+        // Partially visible elements return true:
+        //isVisible = elemTop < window.innerHeight && elemBottom >= 0;
+        return isVisible;
+    }
 
     function flush_edit_buffer() {
         buffer_element.innerHTML = process_text(buffer.join(""));
@@ -93,11 +109,17 @@
         for (var i = 0; i < cursor; i++) {
             cursor_spaces += "\xa0";
         }
-        for (var i = 0; i < prompt_text().length; i++) {
-            cursor_spaces += "\xa0";
-        }
+
+        // // I don't know why this is needed
+        // if (cursor == 0 && buffer.length == 0) {
+        //     cursor_spaces = "\xa0";
+        // }
 
         cursor_spacer.innerHTML = cursor_spaces
+
+        if (!isScrolledIntoView(buffer_element)) {
+          window.scrollTo(0, document.body.scrollHeight);
+        }
     }
 
     function process_text(text) {
@@ -121,9 +143,19 @@
             cursor -= 1;
             buffer.splice(cursor, 1);
         }
-        console.dir(buffer);
         flush_edit_buffer();
     }
+
+    function backspace_word() {
+        let idx = get_last_edit_buffer_word_idx()
+        let delete_length = cursor - idx;
+        if (delete_length > 0) {
+            cursor = idx;
+            buffer.splice(cursor, delete_length);
+        }
+        flush_edit_buffer();
+    }
+
 
     const context = {
         cwd: [],
@@ -144,10 +176,12 @@
 
     function prompt() {
         prompt_element.innerHTML = process_text(prompt_text())
+        window.scrollTo(0, document.body.scrollHeight);
+
     }
 
-    function make_sys() {
-        return {print, println, context}
+    function make_sys(env_vars) {
+        return {print, println, context, read: () => {return null}, env: env_vars}
     }
 
     function arg_split(argv_string) {
@@ -203,11 +237,38 @@
         return [result, i];
     }
 
+    function consume_env_vars(program_buffer) {
+        let env_vars = {};
+        for (let i = 0; i < program_buffer.length; i++) {
+            // Consume starting white space
+            if (program_buffer[i] == " ") {
+                continue;
+            } else if (program_buffer[i] == "$") {
+                let result = consume_to_seperators(i, program_buffer, [" "])
+                let env_var = result[0]
+                i = result[1]
+                let env_var_parts = env_var.split("=")
+                if (env_var_parts.length < 1) {
+                    throw Error("Invalid env var")
+                }
+                env_vars[env_var_parts[0]] = env_var_parts[1] ? env_var_parts[1] : ""
+            } else {
+                return [i, env_vars];
+            }
+        }
+        return [program_buffer.length, env_vars];
+    }
+
     function parse_programs(program_buffer) {
         let cur_text = ""
         let programs = [];
         let cur_program = null;
-        for (let i = 0; i < program_buffer.length; i++) {
+
+        let result = consume_env_vars(program_buffer);
+        let start = result[0];
+        let env_vars = result[1];
+
+        for (let i = start; i < program_buffer.length; i++) {
             let char = program_buffer[i];
 
             if (char == ">") {
@@ -223,7 +284,6 @@
                         throw Error("This should be impossible?");
                     }
                     program = cur_program;
-                    program.argv = arg_split(cur_text);
                 }
                 let result = consume_to_seperators(i + 1, program_buffer, [" "]);
                 i = result[1];
@@ -275,7 +335,7 @@
             programs.push(cur_program);
         }
 
-        return programs;
+        return [env_vars, programs];
     }
 
     async function enter(commands) {
@@ -288,10 +348,12 @@
         history.push(command.join(""));
         history.reset();
 
-        let programs = parse_programs(command)
-        console.dir(programs);
+        let result = parse_programs(command)
+        let env_vars = result[0];
+        let programs = result[1];
+
         for (const program of programs) {
-            await commands.invoke(program, make_sys());
+            await commands.invoke(program, make_sys(env_vars));
         }
 
         make_cursors();
@@ -299,7 +361,7 @@
         buffer_element = document.createElement("span");
         prompt();
         flush_edit_buffer();
-        content.append(cursor_container, prompt_element, buffer_element);
+        content.append(prompt_element, cursor_container, buffer_element);
     }
 
     function saturating_sub(a, b) {
@@ -340,8 +402,56 @@
         }
     }
 
+    content.addEventListener("paste", async (event) => {
+        event.clipboardData.items[0].getAsString(async (text) => {
+            write_edit_buffer(text)
+        });
+    })
+
+    function cursor_end() {
+        return buffer.length
+    }
+
+    function get_last_edit_buffer_word_idx() {
+        for (let i = cursor - 1; i > 0; i--) {
+            if (buffer[i] == " "
+                || buffer[i] == ":"
+                || buffer[i] == "/"
+                || buffer[i] == "!"
+                || buffer[i] == "$"
+                || buffer[i] == ">"
+                || buffer[i] == "<"
+                || buffer[i] == "|"
+                || buffer[i] == "&"
+                || buffer[i] == ";"
+                || buffer[i] == "\n"
+                || buffer[i] == "\t") {
+                return i;
+            }
+        }
+        return 0;
+    }
+    function get_next_edit_buffer_word_idx() {
+        for (let i = cursor + 1; i < buffer.length; i++) {
+            if (buffer[i] == " "
+                || buffer[i] == ":"
+                || buffer[i] == "/"
+                || buffer[i] == "!"
+                || buffer[i] == "$"
+                || buffer[i] == ">"
+                || buffer[i] == "<"
+                || buffer[i] == "|"
+                || buffer[i] == "&"
+                || buffer[i] == ";"
+                || buffer[i] == "\n"
+                || buffer[i] == "\t") {
+                return i;
+            }
+        }
+        return cursor_end();
+    }
+
     content.addEventListener("keydown", async (event) => {
-        event.preventDefault();
         console.log(event.code);
 
         if (event.code == "ArrowUp") {
@@ -353,18 +463,47 @@
         }
 
         switch (event.code) {
+            case "KeyV": {
+                if (event.ctrlKey || event.metaKey) {
+                    return
+                } else {
+                    write_edit_buffer(event.key)
+                }
+                break;
+            }
             case "Enter":
+                event.preventDefault();
                 await enter(commands);
                 break;
             case "Backspace":
-                backspace();
+                event.preventDefault();
+                if (event.getModifierState("Alt")) {
+                    backspace_word()
+                } else {
+                    backspace();
+                }
                 break;
             case "ArrowLeft":
-                cursor = saturating_sub(cursor, 1)
+                event.preventDefault();
+                if (event.metaKey || event.ctrlKey) {
+                    cursor = 0
+                } else if (event.getModifierState("Alt")) {
+                    cursor = get_last_edit_buffer_word_idx();
+                } else {
+                    cursor = saturating_sub(cursor, 1);
+                }
                 flush_edit_buffer();
                 break;
             case "ArrowRight":
-                cursor = saturating_add(cursor, 1, buffer.length);
+                event.preventDefault();
+                if (event.metaKey || event.ctrlKey) {
+                    cursor = cursor_end()
+                } else if (event.getModifierState("Alt")) {
+                    cursor = get_next_edit_buffer_word_idx();
+                } else {
+                    cursor = saturating_add(cursor, 1, buffer.length);
+                }
+
                 flush_edit_buffer();
                 break;
             case "Tab":
@@ -376,6 +515,7 @@
             case "AltRight":
             case "ShiftRight":
             case "ControlRight":
+                event.preventDefault();
                 break;
             default:
                 write_edit_buffer(event.key)
@@ -389,17 +529,20 @@
         } else {
             content.append(text);
         }
+        window.scrollTo(0, document.body.scrollHeight);
     }
     function println(text) {
         print(text);
         content.append(document.createElement("br"));
+        window.scrollTo(0, document.body.scrollHeight);
+
     }
 
-    await Promise.all(commands.on_startup_programs.map((program) => program(make_sys())))
+    await Promise.all(commands.on_startup_programs.map((program) => program(make_sys(null))))
 
     make_cursors()
     buffer_element.style.zIndex = 1;
-    content.append(cursor_container, prompt_element, buffer_element);
+    content.append(prompt_element, cursor_container, buffer_element);
     prompt();
     flush_edit_buffer();
 
