@@ -20,8 +20,14 @@ class Commands {
   async invoke(program, sys) {
     let argv = program.argv;
 
-    if (program.stdout) {
-      sys.println("stdout: " + program.stdout)
+    console.dir(sys);
+    if (sys.env.hasOwnProperty("DEBUG")) {
+      if (program.stdout) {
+        sys.println("stdout: " + program.stdout)
+      }
+      if (program.stdin) {
+        sys.println("stdin: " + program.stdin)
+      }
     }
 
     const name = argv[0];
@@ -67,9 +73,30 @@ export let commands = new Commands({
     if (argv[1] != null) {
       sys.context.cwd.push(argv[1])
     } else {
-      sys.println("ERROR: No directory specified")
+      throw Error("No directory specified")
     }
   },
+
+  "number-lines": async (argv, sys) => {
+    if (argv[1] != "-l") {
+      throw Error("Need to specify -l")
+    }
+    if (argv.length != 2) {
+      throw Error("Cannot specify any other arguments")
+    }
+    let input = sys.read();
+    if (input == null) {
+      throw Error("No input")
+    }
+
+    let lines = input.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      sys.println(i + ": " + lines[i]);
+    }
+  },
+  // "^": async (argv, sys) => {
+  //
+  // }
 });
 
 
