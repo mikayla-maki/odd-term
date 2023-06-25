@@ -101,7 +101,9 @@
     }
 
     function process_text(text) {
-        return text.replace(" ", "\xa0");
+        return text.replace(" ", "\xa0")
+            .replace("<", "\x3c")
+            .replace(">", "\x3e");
     }
 
     function write_edit_buffer(text) {
@@ -145,7 +147,7 @@
     }
 
     function make_sys() {
-        return { print, println, context }
+        return {print, println, context}
     }
 
     function arg_split(argv_string) {
@@ -174,49 +176,103 @@
             arg += char;
         }
         if (arg.trim() != "") {
-            argv.push(arg);
+            argv.push(arg.trim());
         }
 
         return argv
     }
 
+    function consume_to_seperators(idx, program_buffer, seperators) {
+        let result = "";
+        let i = idx;
+        for (let j = i + 1; j < program_buffer.length; j++) {
+            let break_outer = false;
+            for (let k = 0; k < seperators.length; k++) {
+                if (program_buffer[j] == seperators[k]) {
+                    break_outer = true;
+                    break;
+                }
+            }
+            if (break_outer) {
+                break;
+            }
+
+            result += program_buffer[j]
+            i = j;
+        }
+        return [result, i];
+    }
+
     function parse_programs(program_buffer) {
-        let cur_program = ""
+        let cur_text = ""
         let programs = [];
+        let cur_program = null;
         for (let i = 0; i < program_buffer.length; i++) {
             let char = program_buffer[i];
 
             if (char == ">") {
-                let program = {
-                    argv: arg_split(cur_program),
-                    stdout: "",
-                    stdin: null,
-                };
-                let file_name = "";
-
-                for (let j = i + 1; j < program_buffer.length; j++) {
-                    i = j;
-                    if (char == " ") {
-                        break;
-                    } else {
-                        file_name += program_buffer[j]
+                let program = null;
+                if (!cur_program) {
+                    program = {
+                        argv: arg_split(cur_text),
+                        stdout: "",
+                        stdin: null,
+                    };
+                } else {
+                    if (cur_text.trim() != "") {
+                        throw Error("This should be impossible?");
                     }
+                    program = cur_program;
+                    program.argv = arg_split(cur_text);
                 }
+                let result = consume_to_seperators(i + 1, program_buffer, [" "]);
+                i = result[1];
+                let file_name = result[0];
                 program.stdout = file_name.trim();
                 programs.push(program);
-                cur_program = "";
+                cur_program = null;
+                cur_text = "";
+                continue;
+            } else if (char == "<") {
+                let program = null;
+                if (!cur_program) {
+                    program = {
+                        argv: null,
+                        stdout: null,
+                        stdin: cur_text.trim()
+                    }
+                } else {
+                    if (cur_text.trim() != "") {
+                        throw Error("This should be impossible?");
+                    }
+                    program = cur_program
+                }
+
+                let result = consume_to_seperators(i, program_buffer, [">", "<"]);
+                i = result[1];
+                let argv = result[0];
+                program.argv = arg_split(argv)
+                cur_text = "";
+                cur_program = program;
                 continue;
             }
 
-            cur_program += char;
+            cur_text += char;
         }
 
-        if (cur_program != "") {
-            programs.push({
-                argv: arg_split(cur_program),
-                stdout: null,
-                stdin: null
-            })
+        if (cur_text != "") {
+            if (!cur_program) {
+                programs.push({
+                    argv: arg_split(cur_text),
+                    stdout: null,
+                    stdin: null
+                })
+            } else {
+                cur_program.argv = arg_split(cur_text);
+                programs.push(cur_program)
+            }
+        } else if (cur_program != null) {
+            programs.push(cur_program);
         }
 
         return programs;

@@ -67,9 +67,26 @@ export let commands = new Commands({
     if (argv[1] != null) {
       sys.context.cwd.push(argv[1])
     } else {
-      sys.println("ERROR: No directory specified")
+      throw Error("No directory specified")
     }
   },
+
+  "number-lines": async (argv, sys) => {
+    if (argv[1] != "-l") {
+      throw Error("Need to specify -l")
+    }
+    if (argv.length != 2) {
+      throw Error("Cannot specify any other arguments")
+    }
+
+    let lines = sys.read().split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      sys.println(i + ": " + lines[i]);
+    }
+  },
+  // "^": async (argv, sys) => {
+  //
+  // }
 });
 
 
