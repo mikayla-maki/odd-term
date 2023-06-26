@@ -1,5 +1,15 @@
 import * as odd from "./odd.esm.min.js";
 
+// TODO: Deduplicate this with the one in the main file.
+function saturating_sub(a, b) {
+  let result = a - b;
+  if (result < 0) {
+    return 0;
+  } else {
+    return result;
+  }
+}
+
 export function odd_commands(commands) {
   let odd_program = null;
   async function get_odd_program(sys, messages) {
@@ -19,11 +29,50 @@ export function odd_commands(commands) {
     return odd_program
   }
 
+  let history_index = null;
+  const history_path = odd.path.file("public", ".history");
+
+  commands.on_history(async (sys, history, command_str) => {
+    const program = await get_odd_program(sys, true)
+    if (program && program.session) { // if we have a session, we're logged in
+      let history_text = "";
+      // TODO: split the history files up so that they don't grow too unbounded
+      if (await program.session.fs.exists(history_path)) {
+        let history_file = await program.session.fs.read(history_path);
+        history_text = (new TextDecoder("utf-8")).decode(history_file);
+        // Truncate to 100 entries, to keep things nice.
+        let history_entries = history_text.split("\n");
+        history_entries = history_entries.filter(entry => entry != "")
+        let starting_point = saturating_sub(history_entries.length, 100);
+        history_entries = history_entries.slice(starting_point);
+        if (!history_index) {
+          history.history.unshift(...history_entries.slice(starting_point, history_entries.length));
+          let length = history_entries.length - starting_point;
+          history.cursor += length - 1;
+          history_index = history_entries.length;
+        }
+        history_text = history_entries.join("\n");
+      } else {
+        for (let i = 0; i < history.history.length; i++) {
+          history_text += history.history[i] + "\n";
+        }
+        history_index = history.history.length;
+      }
+      if (command_str) {
+        history_text += "\n" + command_str;
+        // TODO: Better synchronize and use the history index for !
+        history_index += 1;
+      }
+      await program.session.fs.write(history_path, (new TextEncoder()).encode(history_text))
+      await program.session.fs.publish()
+    }
+  })
+
   commands.on_startup(async (sys) => {
     const program = await get_odd_program(sys, true)
     if (program && program.session) { // if we have a session, we're logged in
       sys.context.user = program.session.username
-      add_odd_fs_commands(program)
+      add_odd_fs_commands(program, history)
     }
   })
 
@@ -71,6 +120,48 @@ export function odd_commands(commands) {
   }
 
   function add_odd_fs_commands(program) {
+    async function make_sys(stdout_file, stdin_file, sys) {
+      if (stdout_file) {
+        let path = file_path(sys, stdout_file);
+        let buffer = ""
+        let read_buffer = null;
+        if (stdin_file) {
+          let stdin_path = file_path(sys, stdin_file);
+          let stdin_result = await program.session.fs.read(stdin_path);
+          read_buffer = (new TextDecoder("utf-8")).decode(stdin_result)
+        }
+        return {
+          sys: {
+            ...sys,
+            print: (text) => {
+              buffer += text;
+            },
+            println: (text) => {
+              buffer += text + "\n";
+            },
+            read: () => { return read_buffer },
+          },
+          flush: async () => {
+            const content = new TextEncoder().encode(buffer)
+            await program.session.fs.write(path, content)
+            await program.session.fs.publish()
+          }
+        }
+      } else {
+        return {
+          sys, flush: async () => {
+            await program.session.fs.publish()
+          }
+        }
+      }
+    }
+
+    commands.set_middleware(async (program, command, sys) => {
+      let odd_sys = await make_sys(program.stdout, program.stdin, sys)
+      await command(odd_sys.sys)
+      await odd_sys.flush()
+    })
+
     commands.register_command("touch", async (argv, sys) => {
       if (!program.session) {
         throw Error("No username registered")
@@ -84,7 +175,7 @@ export function odd_commands(commands) {
         return;
       }
       const path = file_path(sys, argv[1])
-      const content = new TextEncoder().encode("Hello from touch")
+      const content = new TextEncoder().encode("")
 
       await program.session.fs.write(path, content)
     })
@@ -119,14 +210,7 @@ export function odd_commands(commands) {
       sys.println((new TextDecoder("utf-8")).decode(result))
     })
 
-    commands.register_command("publish", async (_argv, sys) => {
-      if (!program.session) {
-        throw Error("No username registered")
-      }
-
-      await program.session.fs.publish();
-    })
-
+    // TODO: Move this to bin after adding pipes
     commands.register_command("eval", async (argv, sys) => {
       if (!program.session) {
         throw Error("No username registered")
@@ -136,48 +220,21 @@ export function odd_commands(commands) {
       }
 
       const path = file_path(sys, argv[1])
-
-
       const result = await program.session.fs.read(path);
       const js = (new TextDecoder("utf-8")).decode(result)
       eval(js)
     })
 
-    async function make_sys(stdout_file, stdin_file, sys) {
-      if (stdout_file) {
-        let path = file_path(sys, stdout_file);
-        let buffer = ""
-        let read_buffer = null;
-        if(stdin_file) {
-          let stdin_path = file_path(sys, stdin_file);
-          let stdin_result = await program.session.fs.read(stdin_path);
-          read_buffer = (new TextDecoder("utf-8")).decode(stdin_result)
-        }
-        return {
-          sys: {
-            print: (text) => {
-              buffer += text;
-            },
-            println: (text) => {
-              buffer += text + "\n";
-            },
-            read: () => { return read_buffer },
-            context: sys.context
-          },
-          flush: async () => {
-            const content = new TextEncoder().encode(buffer)
-            await program.session.fs.write(path, content)
-          }
-        }
-      } else {
-        return { sys, flush: async () => { } }
+    commands.register_command("rm", async (argv, sys) => {
+      if (!program.session) {
+        throw Error("No username registered")
       }
-    }
+      if (!argv[1]) {
+        throw Error("No filename specified")
+      }
 
-    commands.set_middleware(async (program, command, sys) => {
-      let odd_sys = await make_sys(program.stdout, program.stdin, sys)
-      await command(odd_sys.sys)
-      await odd_sys.flush()
+      const path = file_path(sys, argv[1])
+      await program.session.fs.rm(path);
     })
   }
 }
