@@ -6,7 +6,8 @@
 
 <body id="body" style="background-color: black;">
     <div id="content"
-        style="white-space: pre; z-index: 1;background-color: black; font-family: monospace; color: white; margin: 20vh 20vw; font-size: 18px; overflow-wrap: anywhere;"></div>
+        style="white-space: pre; z-index: 1;background-color: black; font-family: monospace; color: white; margin: 20vh 20vw; font-size: 18px; overflow-wrap: anywhere;">
+    </div>
     <script type="module">
         import * as odd from "./odd.esm.min.js";
         import {commands} from "./bin.js";
@@ -58,6 +59,7 @@
         }
 
         const content = document.getElementById("content");
+        content.innerHTML = "";
         const body = document.getElementById("body");
 
         let buffer = [];
@@ -166,23 +168,23 @@
         function prompt_text() {
             let result = ""
             if (context.user) {
-                result += "@" + context.user + ":";
+                result += "<span style='color:#b7b7fd'>@" + context.user + "</span>:";
             }
             result += "~";
             if (context.cwd.length > 0) {
                 result += "/";
             }
-            return result + context.cwd.join("/") + " > ";
+            return result + context.cwd.join("/") + " <span style='color:pink'>></span> ";
         }
 
         function prompt() {
-            prompt_element.innerHTML = process_text(prompt_text())
+            prompt_element.innerHTML = prompt_text()
             window.scrollTo(0, document.body.scrollHeight);
 
         }
 
         function make_sys(env_vars) {
-            return {print, println, context, read: () => {return null}, env: env_vars}
+            return {display: print, print, println, context, read: () => {return null}, env: env_vars}
         }
 
         function arg_split(argv_string) {
@@ -339,7 +341,9 @@
             return [env_vars, programs];
         }
 
+        let command_running = false;
         async function enter(commands) {
+            command_running = true;
             let command = [...buffer];
             buffer = [];
             cursor = 0;
@@ -367,6 +371,7 @@
             prompt();
             flush_edit_buffer();
             content.append(prompt_element, cursor_container, buffer_element);
+            command_running = false;
         }
 
         function saturating_sub(a, b) {
@@ -469,6 +474,10 @@
 
         body.addEventListener("keydown", async (event) => {
             console.log(event.code);
+            if (command_running) {
+                event.preventDefault();
+                return;
+            }
 
             if (event.code == "ArrowUp") {
                 event.preventDefault();
@@ -561,7 +570,9 @@
             window.scrollTo(0, document.body.scrollHeight);
         }
         function println(text) {
-            print(text);
+            if (text) {
+                print(text);
+            }
             content.append(document.createElement("br"));
             window.scrollTo(0, document.body.scrollHeight);
 
@@ -581,9 +592,10 @@
         /*
          1. Tab completion
          2. ✅ History persistence to file system
-         3. File upload
-         4. better styling and interactions (e.g. click to move cursor)
-         5. Use vite or some shit
+         3. ✅ File upload
+         4. ✅ better styling and interactions (e.g. click to move cursor)
+         5. Pipes
+         6. Refactor into something that everyone can use
          */
     </script>
 

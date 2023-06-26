@@ -132,6 +132,7 @@ export function odd_commands(commands) {
         }
         return {
           sys: {
+            ...sys,
             print: (text) => {
               buffer += text;
             },
@@ -139,7 +140,6 @@ export function odd_commands(commands) {
               buffer += text + "\n";
             },
             read: () => { return read_buffer },
-            context: sys.context
           },
           flush: async () => {
             const content = new TextEncoder().encode(buffer)
@@ -210,6 +210,7 @@ export function odd_commands(commands) {
       sys.println((new TextDecoder("utf-8")).decode(result))
     })
 
+    // TODO: Move this to bin after adding pipes
     commands.register_command("eval", async (argv, sys) => {
       if (!program.session) {
         throw Error("No username registered")

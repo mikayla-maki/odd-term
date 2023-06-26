@@ -54,7 +54,7 @@ class Commands {
 
       return sys.println("Command not found: " + name);
     } catch (error) {
-      sys.println("Command terminated with an exception: " + error)
+      sys.println("Exception: " + error)
     }
   }
 }
@@ -95,9 +95,27 @@ export let commands = new Commands({
       sys.println(i + ": " + lines[i]);
     }
   },
-  // "^": async (argv, sys) => {
-  //
-  // }
+  "^": async (argv, sys) => {
+    let id = Math.floor(Math.random() * 1000);
+
+    let file_elem = window.document.createElement('input');
+    file_elem.setAttribute("type", "file");
+    file_elem.setAttribute("id", "file-" + id);
+    file_elem.click();
+    sys.display("Please select a file: ");
+    sys.display(file_elem);
+    sys.display(window.document.createElement('br'));
+
+    let promise = new Promise((resolve, reject) => {
+      file_elem.addEventListener("change", (e) => {
+        resolve(e.target.files[0]);
+      });
+    });
+
+    let file = await promise;
+    sys.print(file);
+    file_elem.setAttribute("disabled", "true");
+  }
 });
 
 
