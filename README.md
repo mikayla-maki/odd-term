@@ -1,3 +1,6 @@
+This project includes a bunch of random scripts for serving this to a LAN and providing https from local host. 
+The terminal / shell code is in term.odd.html, the terminal callbacks are in bin.js, and odd.js is a 'user space' appliction for writing scripts in odd-term.
+
 1. Include and trust the provided .cer file. It's fine, I promise.
 A)
     2. Run python3 server.py
