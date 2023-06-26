@@ -3,6 +3,7 @@ class Commands {
     this.commands = commands;
     this.middleware = null;
     this.on_startup_programs = [];
+    this.on_history_handlers = [];
   }
 
   register_command(name, handler) {
@@ -17,10 +18,14 @@ class Commands {
     this.on_startup_programs.push(handler);
   }
 
+  on_history(handler) {
+    this.on_history_handlers.push(handler);
+  }
+
+
   async invoke(program, sys) {
     let argv = program.argv;
 
-    console.dir(sys);
     if (sys.env.hasOwnProperty("DEBUG")) {
       if (program.stdout) {
         sys.println("stdout: " + program.stdout)
@@ -69,12 +74,8 @@ export let commands = new Commands({
     sys.println("No storage attached :(")
   },
 
-  "cd": async (argv, sys) => {
-    if (argv[1] != null) {
-      sys.context.cwd.push(argv[1])
-    } else {
-      throw Error("No directory specified")
-    }
+  "cd": async (_argv, sys) => {
+    sys.println("No storage attached :(")
   },
 
   "number-lines": async (argv, sys) => {
