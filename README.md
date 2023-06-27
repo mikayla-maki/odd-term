@@ -17,3 +17,5 @@ brew install mkcert
 brew install nss # if you use Firefox
 mkcert -install
 ```
+
+Make sure to run `register-odd <username>` after you get it running to use the file system stuff!
