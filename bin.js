@@ -2,12 +2,21 @@ class Commands {
   constructor(commands) {
     this.commands = commands;
     this.middleware = null;
+    this.symbols = [];
     this.on_startup_programs = [];
     this.on_history_handlers = [];
   }
 
   register_command(name, handler) {
     this.commands[name] = handler;
+  }
+
+  set_extra_symbols(symbols) {
+    this.symbols = symbols;
+  }
+
+  all_symbols() {
+    return Object.keys(this.commands).concat(this.symbols);
   }
 
   set_middleware(middleware) {
@@ -150,7 +159,6 @@ export let commands = new Commands({
     file_elem.setAttribute("disabled", "true");
   }
 });
-
 
 import { odd_commands } from "./odd.js"
 odd_commands(commands)
