@@ -25,17 +25,20 @@ class Commands {
 
   async invoke(program, sys) {
     let argv = program.argv;
+    const name = argv[0];
 
     if (sys.env.hasOwnProperty("DEBUG")) {
       if (program.stdout) {
-        sys.println("stdout: " + program.stdout)
+        sys.display(name + " has stdout: " + program.stdout + "\n")
       }
       if (program.stdin) {
-        sys.println("stdin: " + program.stdin)
+        sys.display(name + " has stdin: " + program.stdin + "\n")
+      }
+      if (program.pipe) {
+        sys.display(name + " has pipe\n")
       }
     }
 
-    const name = argv[0];
     if (name == "") {
       return;
     }
@@ -59,10 +62,21 @@ class Commands {
   }
 }
 
-
 export let commands = new Commands({
   "echo": async (argv, sys) => {
-    sys.println(argv.slice(1).join(" "));
+    let read = sys.read();
+    while(read != null) {
+      sys.print(read);
+      read = sys.read();
+    }
+
+    let print = sys.println;
+    if (argv[1] == "-n") {
+      print = sys.print;
+      argv = argv.slice(1);
+    }
+
+    print(argv.slice(1).join(" "));
   },
   "cat": async (_argv, sys) => {
     let img = document.createElement("img");
@@ -78,6 +92,18 @@ export let commands = new Commands({
     sys.println("No storage attached :(")
   },
 
+  "eval": async (_argv, sys) => {
+
+    let input = "";
+    let read = sys.read();
+    while (read != null) {
+      input += read;
+      read = sys.read();
+    }
+
+    eval(input)
+  },
+
   "number-lines": async (argv, sys) => {
     if (argv[1] != "-l") {
       throw Error("Need to specify -l")
@@ -85,8 +111,15 @@ export let commands = new Commands({
     if (argv.length != 2) {
       throw Error("Cannot specify any other arguments")
     }
-    let input = sys.read();
-    if (input == null) {
+
+    let input = "";
+    let read = sys.read();
+    while (read != null) {
+      input += read;
+      read = sys.read();
+    }
+
+    if (input == "") {
       throw Error("No input")
     }
 
@@ -95,7 +128,7 @@ export let commands = new Commands({
       sys.println(i + ": " + lines[i]);
     }
   },
-  "^": async (argv, sys) => {
+  "^": async (_argv, sys) => {
     let id = Math.floor(Math.random() * 1000);
 
     let file_elem = window.document.createElement('input');
@@ -104,7 +137,7 @@ export let commands = new Commands({
     file_elem.click();
     sys.display("Please select a file: ");
     sys.display(file_elem);
-    sys.display(window.document.createElement('br'));
+    sys.displayln();
 
     let promise = new Promise((resolve, reject) => {
       file_elem.addEventListener("change", (e) => {

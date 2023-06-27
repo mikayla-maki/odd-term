@@ -128,7 +128,8 @@
         function process_text(text) {
             return text.replace(" ", "\xa0")
                 .replace("<", "\x3c")
-                .replace(">", "\x3e");
+                .replace(">", "\x3e")
+                .replace("\n", "<br/>");
         }
 
         function write_edit_buffer(text) {
@@ -177,14 +178,15 @@
             return result + context.cwd.join("/") + " <span style='color:pink'>></span> ";
         }
 
+        let line_output = true;
+
         function prompt() {
             prompt_element.innerHTML = prompt_text()
             window.scrollTo(0, document.body.scrollHeight);
-
         }
 
         function make_sys(env_vars) {
-            return {display: print, print, println, context, read: () => {return null}, env: env_vars}
+            return {display: print, displayln: println, print, println, context, read: () => {return null}, env: env_vars}
         }
 
         function arg_split(argv_string) {
@@ -281,6 +283,7 @@
                             argv: arg_split(cur_text),
                             stdout: "",
                             stdin: null,
+                            pipe: null,
                         };
                     } else {
                         if (cur_text.trim() != "") {
@@ -302,7 +305,8 @@
                         program = {
                             argv: null,
                             stdout: null,
-                            stdin: cur_text.trim()
+                            stdin: cur_text.trim(),
+                            pipe: null,
                         }
                     } else {
                         if (cur_text.trim() != "") {
@@ -311,12 +315,30 @@
                         program = cur_program
                     }
 
-                    let result = consume_to_seperators(i, program_buffer, [">", "<"]);
+                    let result = consume_to_seperators(i, program_buffer, [">", "<", "|"]);
                     i = result[1];
                     let argv = result[0];
                     program.argv = arg_split(argv)
                     cur_text = "";
                     cur_program = program;
+                    continue;
+                } else if (char == "|") {
+                    if (!cur_program) {
+                        programs.push({
+                            argv: arg_split(cur_text),
+                            stdout: null,
+                            stdin: null,
+                            pipe: true,
+                        })
+                    } else {
+                        if (cur_text.trim() != "") {
+                            cur_program.argv = arg_split(cur_text);
+                        }
+                        cur_program.pipe = true;
+                        programs.push(cur_program);
+                    }
+                    cur_text = "";
+                    cur_program = null;
                     continue;
                 }
 
@@ -338,10 +360,72 @@
                 programs.push(cur_program);
             }
 
+
             return [env_vars, programs];
         }
 
+        function parse_program_test() {
+            let program = "$DEBUG=test test.txt < echo 'hello world' | echo | number-lines -l > test.txt";
+            let result = parse_programs(program.split(""))
+            if (JSON.stringify(result) !== JSON.stringify([
+                {DEBUG: "test"},
+                [
+                    {
+                        argv: ["echo", "hello world"],
+                        stdout: null,
+                        stdin: "test.txt",
+                        pipe: true
+                    },
+                    {
+                        argv: ["echo"],
+                        stdout: null,
+                        stdin: null,
+                        pipe: true
+                    },
+                    {
+                        argv: ["number-lines", "-l"],
+                        stdout: "test.txt",
+                        stdin: null,
+                        pipe: null
+                    },
+                ]
+            ])) {
+                debugger;
+                alert("Failed to parse program")
+                console.dir(result)
+                throw new Error("Failed to parse program");
+            }
+        }
+        parse_program_test()
+
+        function pipe_read_sys(sys, pipe) {
+            let read_pipe = [...pipe]
+            return {
+                ...sys,
+                read: function () {
+                    if (read_pipe.length == 0) {
+                        return sys.read();
+                    }
+                    return read_pipe.shift();
+                }
+            }
+        }
+
+        function pipe_write_sys(sys, pipe) {
+            return {
+                ...sys,
+                print: function (item) {
+                    pipe.push(item);
+                },
+                println: function (item) {
+                    pipe.push(item);
+                    pipe.push("\n")
+                }
+            }
+        }
+
         let command_running = false;
+
         async function enter(commands) {
             command_running = true;
             let command = [...buffer];
@@ -352,12 +436,46 @@
             let command_str = command.join("");
 
             let result = parse_programs(command)
+            console.dir(result);
             let env_vars = result[0];
             let programs = result[1];
 
             let sys = make_sys(env_vars);
+            let pipe = [];
+            let had_pipe = false;
             for (const program of programs) {
-                await commands.invoke(program, sys);
+                if (had_pipe && program.stdin) {
+                    console.dir(command_str, result);
+                    throw new Error("Program parse erorr: had pipe + stdin are mutuallly exclusive")
+                }
+                if (program.stdout && program.pipe) {
+                    console.dir(command_str, result)
+                    throw new Error("Program parse erorr: pipe and stdout are mutually exclusive");
+                }
+
+                let pipe_sys = sys;
+                if (had_pipe) {
+                    // Wraps read() with the pipe buffer
+                    pipe_sys = pipe_read_sys(pipe_sys, pipe);
+                    pipe = [];
+                    had_pipe = false;
+                }
+                if (program.pipe) {
+                    // Wraps print() and println() in a buffer
+                    pipe_sys = pipe_write_sys(pipe_sys, pipe)
+                    had_pipe = true;
+                }
+                await commands.invoke(program, pipe_sys);
+            }
+            if (!line_output) {
+                let span = document.createElement("span")
+                span.style.backgroundColor = "white"
+                span.style.opacity = 0.5
+                span.style.color = "black"
+                span.append("%");
+                content.append(span);
+                content.append(document.createElement("br"));
+                line_output = true;
             }
             // This goes after command invocation so that it's unlikely for
             // commands to race history maintenance completion.
@@ -463,7 +581,6 @@
 
         function clear_terminal() {
             content.innerHTML = "";
-            // content.append(document.createElement("br"));
             make_cursors();
             prompt_element = document.createElement("span");
             buffer_element = document.createElement("span");
@@ -490,6 +607,15 @@
             }
 
             switch (event.code) {
+                case "KeyA": {
+                    if (event.ctrlKey || event.metaKey) {
+                        cursor = 0
+                        flush_edit_buffer();
+                    } else {
+                        write_edit_buffer(event.key)
+                    }
+                    break;
+                }
                 case "KeyV": {
                     if (event.ctrlKey || event.metaKey) {
                         return
@@ -513,7 +639,11 @@
                     break;
                 case "Backspace":
                     event.preventDefault();
-                    if (event.getModifierState("Alt")) {
+                    if (event.ctrlKey || event.metaKey) {
+                        cursor = 0;
+                        buffer = [];
+                        flush_edit_buffer();
+                    } else if (event.getModifierState("Alt")) {
                         backspace_word()
                     } else {
                         backspace();
@@ -542,6 +672,12 @@
 
                     flush_edit_buffer();
                     break;
+                case "Quote":
+                    event.preventDefault()
+                    if (!event.ctrlKey && !event.metaKey && !event.altKey) {
+                        write_edit_buffer(event.key)
+                    }
+                    break;
                 case "Tab":
                 case "OSLeft":
                 case "AltLeft":
@@ -561,9 +697,13 @@
         })
 
         function print(text) {
-            // TODO: Support new lines
+            line_output = false;
             if (typeof text == "string") {
                 content.append(process_text(text));
+            } else if (text instanceof File) {
+                content.append(text.name + " (" + text.type + ", " + text.size + " bytes)");
+            } else if (typeof text == "object" && !(text instanceof HTMLElement)) {
+                content.append(process_text(JSON.stringify(text, null, 2)));
             } else {
                 content.append(text);
             }
@@ -573,9 +713,9 @@
             if (text) {
                 print(text);
             }
-            content.append(document.createElement("br"));
-            window.scrollTo(0, document.body.scrollHeight);
-
+            line_output = true;
+            let br = document.createElement("br");
+            content.append(br);
         }
 
         await Promise.all(commands.on_startup_programs.map((program) => program(make_sys(null))))
@@ -594,7 +734,7 @@
          2. ✅ History persistence to file system
          3. ✅ File upload
          4. ✅ better styling and interactions (e.g. click to move cursor)
-         5. Pipes
+         5. ✅ Pipes
          6. Refactor into something that everyone can use
          */
     </script>
