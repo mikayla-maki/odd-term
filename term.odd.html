@@ -589,6 +589,59 @@
             content.append(prompt_element, cursor_container, buffer_element);
         }
 
+        function find_longest_matching_symbol_substring() {
+            let candidates = [];
+            let buffer_txt = buffer.slice(get_last_edit_buffer_word_idx()).join("").trim()
+            if (buffer_txt.trim() == "") {
+                return false;
+            }
+            for (const symbol of commands.all_symbols()) {
+                if (symbol.startsWith(buffer_txt)) {
+                    candidates.push(symbol);
+                }
+            }
+            // Find the longest common prefix of all candidates
+            if (candidates.length == 0) {
+                return;
+            }
+            console.dir(candidates);
+            let longest = candidates[0];
+            for (const candidate of candidates) {
+                let i = 0;
+                while (i < longest.length && i < candidate.length && longest[i] == candidate[i]) {
+                    i++;
+                }
+                longest = longest.slice(0, i);
+            }
+            let perfect_match = candidates.indexOf(longest) >= 0;
+            if (buffer_txt == longest) {
+                show_suggestions(candidates)
+                return;
+            } else {
+                write_edit_buffer(longest.slice(buffer_txt.length) + (perfect_match ? " " : ""));
+            }
+        }
+
+        let suggestions = null;
+        function show_suggestions(candidates) {
+            candidates.sort()
+            candidates = candidates.slice(0, 10);
+            if (suggestions) {
+                suggestions.remove();
+            }
+            suggestions = document.createElement("div");
+            candidates.forEach((candidate) => {
+                let suggestion = document.createElement("span");
+                suggestion.style.backgroundColor = "white"
+                suggestion.style.opacity = 0.5
+                suggestion.style.color = "black"
+                suggestion.append(candidate);
+                suggestions.append(suggestion);
+                suggestions.append(document.createElement("br"));
+            });
+            buffer_element.parentElement.append(suggestions);
+        }
+
         body.addEventListener("keydown", async (event) => {
             console.log(event.code);
             if (command_running) {
@@ -604,6 +657,15 @@
                 return navigateHistory(history, (history) => history.navigateForwards());
             } else {
                 history.reset();
+            }
+
+            if (event.code == "Tab") {
+                event.preventDefault();
+                find_longest_matching_symbol_substring();
+                return;
+            } else if (suggestions) {
+                suggestions.remove();
+                suggestions = null;
             }
 
             switch (event.code) {

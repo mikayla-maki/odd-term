@@ -10,15 +10,6 @@ function saturating_sub(a, b) {
   }
 }
 
-const text_decoder = new TextDecoder("utf-8");
-const text_encoder = new TextEncoder("utf-8");
-function decode_utf8(bytes) {
-  return text_decoder.decode(bytes);
-}
-function encode_utf8(bytes) {
-  return text_encoder.encode(bytes);
-}
-
 export function odd_commands(commands) {
   let odd_program = null;
   async function get_odd_program(sys, messages) {
@@ -82,6 +73,12 @@ export function odd_commands(commands) {
     if (program && program.session) { // if we have a session, we're logged in
       sys.context.user = program.session.username
       add_odd_fs_commands(program, history)
+      program.on("fileSystem:local-change", async (_obj) => {
+        const path = odd.path.directory("public", ...sys.context.cwd)
+        const result = await program.session.fs.ls(path);
+        commands.set_extra_symbols(Object.keys(result))
+      });
+
     }
   })
 
