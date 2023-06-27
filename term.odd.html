@@ -186,7 +186,17 @@
         }
 
         function make_sys(env_vars) {
-            return {display: print, displayln: println, print, println, context, read: () => {return null}, env: env_vars}
+            return {
+                display: print,
+                displayln: println,
+                env: env_vars,
+                print,
+                println,
+                context,
+                read: () => {
+                    return null
+                },
+            }
         }
 
         function arg_split(argv_string) {
@@ -531,9 +541,8 @@
         }
 
         content.addEventListener("paste", async (event) => {
-            event.clipboardData.items[0].getAsString(async (text) => {
-                write_edit_buffer(text)
-            });
+            let text = event.clipboardData.getData('text/plain');
+            write_edit_buffer(text);
         })
 
         function cursor_end() {
@@ -591,12 +600,13 @@
 
         function find_longest_matching_symbol_substring() {
             let candidates = [];
-            let buffer_txt = buffer.slice(get_last_edit_buffer_word_idx()).join("").trim()
-            if (buffer_txt.trim() == "") {
+            let buffer_full_txt = buffer.join("")
+            if (buffer_full_txt.trim() == "" || cursor != buffer_full_txt.length) {
                 return false;
             }
+            let buffer_txt = buffer.slice(get_last_edit_buffer_word_idx()).join("").trim()
             for (const symbol of commands.all_symbols()) {
-                if (symbol.startsWith(buffer_txt)) {
+                if (symbol.text.startsWith(buffer_txt)) {
                     candidates.push(symbol);
                 }
             }
@@ -605,20 +615,20 @@
                 return;
             }
             console.dir(candidates);
-            let longest = candidates[0];
+            let longest = candidates[0].text;
             for (const candidate of candidates) {
                 let i = 0;
-                while (i < longest.length && i < candidate.length && longest[i] == candidate[i]) {
+                while (i < longest.length && i < candidate.text.length && longest[i] == candidate.text[i]) {
                     i++;
                 }
                 longest = longest.slice(0, i);
             }
-            let perfect_match = candidates.indexOf(longest) >= 0;
+            let perfect_match = candidates.map(candidate => candidate.text).indexOf(longest);
             if (buffer_txt == longest) {
                 show_suggestions(candidates)
                 return;
             } else {
-                write_edit_buffer(longest.slice(buffer_txt.length) + (perfect_match ? " " : ""));
+                write_edit_buffer(longest.slice(buffer_txt.length) + (perfect_match >= 0 ? candidates[perfect_match].completion : ""));
             }
         }
 
@@ -635,7 +645,7 @@
                 suggestion.style.backgroundColor = "white"
                 suggestion.style.opacity = 0.5
                 suggestion.style.color = "black"
-                suggestion.append(candidate);
+                suggestion.append(candidate.text);
                 suggestions.append(suggestion);
                 suggestions.append(document.createElement("br"));
             });
@@ -678,6 +688,10 @@
                     }
                     break;
                 }
+                case "Slash":
+                    event.preventDefault();
+                    write_edit_buffer(event.key)
+                    break;
                 case "KeyV": {
                     if (event.ctrlKey || event.metaKey) {
                         return
@@ -749,6 +763,7 @@
                 case "AltRight":
                 case "ShiftRight":
                 case "ControlRight":
+                case "Escape":
                     event.preventDefault();
                     break;
                 default:
@@ -792,12 +807,16 @@
         flush_edit_buffer();
 
         /*
-         1. Tab completion
+         1. ✅ Tab completion
          2. ✅ History persistence to file system
          3. ✅ File upload
          4. ✅ better styling and interactions (e.g. click to move cursor)
          5. ✅ Pipes
-         6. Refactor into something that everyone can use
+         6. ✅ Directory manipulation
+         7. ✅ Move command
+         8. Mv command .. and . and / aware (absolutize paths)
+         9. Context aware tab completion
+         7. Refactor into something that everyone can use
          */
     </script>
 

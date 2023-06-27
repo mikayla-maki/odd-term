@@ -76,7 +76,10 @@ export function odd_commands(commands) {
       program.on("fileSystem:local-change", async (_obj) => {
         const path = odd.path.directory("public", ...sys.context.cwd)
         const result = await program.session.fs.ls(path);
-        commands.set_extra_symbols(Object.keys(result))
+        let completions = Object.values(result).map(file => {
+          return { text: file.name, completion: (file.isFile ? " " : "/") }
+        });
+        commands.set_extra_symbols(completions)
       });
 
     }
@@ -119,10 +122,20 @@ export function odd_commands(commands) {
     }
   })
 
-  function file_path(sys, file_name) {
-    let path_components = [...sys.context.cwd];
-    path_components.push(file_name);
-    return odd.path.file("public", ...path_components);
+  function make_path(cwd_array, file_name, directory = false) {
+    let path_components = [...cwd_array];
+    if (typeof file_name == "string" && file_name != "") {
+      path_components.push(file_name);
+    } else if (Array.isArray(file_name)) {
+      path_components.push(...file_name);
+    } else {
+      throw Error("Invalid file name")
+    }
+    if (directory) {
+      return odd.path.directory("public", ...path_components);
+    } else {
+      return odd.path.file("public", ...path_components);
+    }
   }
 
   function add_odd_fs_commands(program) {
@@ -133,7 +146,7 @@ export function odd_commands(commands) {
       };
 
       if (stdin_file) {
-        let stdin_path = file_path(sys, stdin_file);
+        let stdin_path = make_path(sys.context.cwd, stdin_file);
         let stdin_result = await program.session.fs.read(stdin_path);
         let read_buffer = (new TextDecoder("utf-8")).decode(stdin_result)
         let read_buffer_read = false;
@@ -147,7 +160,7 @@ export function odd_commands(commands) {
         }
       }
       if (stdout_file) {
-        let path = file_path(sys, stdout_file);
+        let path = make_path(sys.context.cwd, stdout_file);
         let write_buffer = ""
         odd_sys.sys.print = (text) => {
           write_buffer += text;
@@ -182,22 +195,31 @@ export function odd_commands(commands) {
         sys.println("Usage: touch <filename>")
         return;
       }
-      const path = file_path(sys, argv[1])
+      const path = make_path(sys.context.cwd, argv[1])
       const content = new TextEncoder().encode("")
 
       await program.session.fs.write(path, content)
     })
 
-    commands.register_command("ls", async (_argv, sys) => {
+    commands.register_command("ls", async (argv, sys) => {
       if (!program.session) {
         throw Error("No username registered")
+      }
+      let filter_hidden = true;
+      if (argv[1] == "-a") {
+        filter_hidden = false;
       }
 
       const path = odd.path.directory("public", ...sys.context.cwd)
 
       const result = await program.session.fs.ls(path);
-      for (const file of Object.keys(result)) {
-        sys.println(file + " - " + result[file].cid)
+      let files = Object.values(result);
+      if (filter_hidden) {
+        files = files.filter((file) => !file.name.startsWith("."))
+      }
+      files.sort((a, b) => a.isFile == b.isFile ? a.name.localeCompare(b.name) : a.isFile ? 1 : -1)
+      for (const file of files) {
+        sys.println(file.name + (file.isFile ? "" : "/") + " - " + file.cid)
       }
     })
 
@@ -228,22 +250,22 @@ export function odd_commands(commands) {
         return;
       }
 
-      const path = file_path(sys, argv[1])
+      const path = make_path(sys.context.cwd, argv[1])
 
       const result = await program.session.fs.read(path);
       if (download) {
         let link = document.createElement("a");
-        link.setAttribute("href", URL.createObjectURL(new Blob([result], {type: "application/octet-stream"})));
+        link.setAttribute("href", URL.createObjectURL(new Blob([result], { type: "application/octet-stream" })));
         link.setAttribute("download", argv[1]);
         link.appendChild(document.createTextNode("Download " + argv[1]));
         sys.println(link);
         return;
       }
-      if (argv[1].endsWith(".jpg") || argv[1].endsWith(".jpeg") ) {
+      if (argv[1].endsWith(".jpg") || argv[1].endsWith(".jpeg")) {
         let img = document.createElement("img");
-        img.src = URL.createObjectURL(new Blob([result], {type: "image/jpeg"}));
+        img.src = URL.createObjectURL(new Blob([result], { type: "image/jpeg" }));
         sys.println(img)
-        if(img.complete) {
+        if (img.complete) {
           // URL.revokeObjectURL(img.src);
         } else {
           img.onload = () => {
@@ -263,8 +285,76 @@ export function odd_commands(commands) {
         throw Error("No filename specified")
       }
 
-      const path = file_path(sys, argv[1])
+      const path = make_path(sys.context.cwd, argv[1])
       await program.session.fs.rm(path);
+    })
+
+    commands.register_command("cd", async (argv, sys) => {
+      if (!program.session) {
+        throw Error("No username registered")
+      }
+      if (!argv[1]) {
+        throw Error("No directory specified")
+      }
+
+      let tmp_cwd = [...sys.context.cwd];
+      let path_components = argv[1].split("/");
+      for (let path_component of path_components) {
+        if (path_component == "." || path_component == "") { continue; }
+        if (path_component == "..") {
+          if (typeof tmp_cwd.pop() == "undefined") {
+            throw Error("Cannot go up from root")
+          }
+        } else {
+          if (await program.session.fs.exists(make_path(tmp_cwd, path_component, true))) {
+            tmp_cwd.push(path_component);
+          } else {
+            throw Error("No such directory")
+          }
+        }
+      }
+      sys.context.cwd = tmp_cwd;
+    })
+
+    commands.register_command("mkdir", async (argv, sys) => {
+      if (!program.session) {
+        throw Error("No username registered")
+      }
+      if (!argv[1]) {
+        throw Error("No directory name specified")
+      }
+
+
+      const path = make_path(sys.context.cwd, argv[1], true)
+      await program.session.fs.mkdir(path);
+    })
+
+    commands.register_command("mv", async (argv, sys) => {
+      if (!program.session) {
+        throw Error("No username registered")
+      }
+
+      if (!argv[1] || !argv[2]) {
+        throw Error("No from and/or to filename specified")
+      }
+
+      let is_dir = false;
+      let from = make_path(sys.context.cwd, argv[1].split("/"));
+      if (!await program.session.fs.exists(from)) {
+        // todo: better way to handle this?
+        is_dir = true;
+        from = make_path(sys.context.cwd, argv[1].split("/"), true);
+        if (!await program.session.fs.exists(from)) {
+          throw Error("No such file or directory")
+        }
+      }
+      let parent_to = argv[2].split("/");
+      parent_to.pop();
+      if (!await program.session.fs.exists(make_path(sys.context.cwd, parent_to))) {
+        throw Error("No such destination directory")
+      }
+      let to = make_path(sys.context.cwd, argv[2].split("/"), is_dir);
+      await program.session.fs.mv(from, to);
     })
 
     commands.register_command("write-file", async (argv, sys) => {
@@ -281,7 +371,7 @@ export function odd_commands(commands) {
         file_name = argv[2];
       }
 
-      const path = file_path(sys, file_name);
+      const path = make_path(sys.context.cwd, file_name);
       await program.session.fs.write(path, file);
     })
   }

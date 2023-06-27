@@ -1,3 +1,5 @@
+import { readToEnd } from "./util.js"
+
 class Commands {
   constructor(commands) {
     this.commands = commands;
@@ -16,7 +18,9 @@ class Commands {
   }
 
   all_symbols() {
-    return Object.keys(this.commands).concat(this.symbols);
+    return Object.keys(this.commands).map(command => {
+      return {text: command, completion: " "}
+    }).concat(this.symbols);
   }
 
   set_middleware(middleware) {
@@ -103,12 +107,7 @@ export let commands = new Commands({
 
   "eval": async (_argv, sys) => {
 
-    let input = "";
-    let read = sys.read();
-    while (read != null) {
-      input += read;
-      read = sys.read();
-    }
+    let input = readToEnd(sys);
 
     eval(input)
   },
@@ -121,12 +120,7 @@ export let commands = new Commands({
       throw Error("Cannot specify any other arguments")
     }
 
-    let input = "";
-    let read = sys.read();
-    while (read != null) {
-      input += read;
-      read = sys.read();
-    }
+    let input = readToEnd(sys);
 
     if (input == "") {
       throw Error("No input")
