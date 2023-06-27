@@ -124,7 +124,13 @@ export function odd_commands(commands) {
 
   function make_path(cwd_array, file_name, directory = false) {
     let path_components = [...cwd_array];
-    path_components.push(file_name);
+    if (typeof file_name == "string" && file_name != "") {
+      path_components.push(file_name);
+    } else if (Array.isArray(file_name)) {
+      path_components.push(...file_name);
+    } else {
+      throw Error("Invalid file name")
+    }
     if (directory) {
       return odd.path.directory("public", ...path_components);
     } else {
@@ -154,7 +160,7 @@ export function odd_commands(commands) {
         }
       }
       if (stdout_file) {
-        let path = path(sys, stdout_file);
+        let path = make_path(sys.context.cwd, stdout_file);
         let write_buffer = ""
         odd_sys.sys.print = (text) => {
           write_buffer += text;
@@ -323,6 +329,34 @@ export function odd_commands(commands) {
       await program.session.fs.mkdir(path);
     })
 
+    commands.register_command("mv", async (argv, sys) => {
+      if (!program.session) {
+        throw Error("No username registered")
+      }
+
+      if (!argv[1] || !argv[2]) {
+        throw Error("No from and/or to filename specified")
+      }
+
+      let is_dir = false;
+      let from = make_path(sys.context.cwd, argv[1].split("/"));
+      if (!await program.session.fs.exists(from)) {
+        // todo: better way to handle this?
+        is_dir = true;
+        from = make_path(sys.context.cwd, argv[1].split("/"), true);
+        if (!await program.session.fs.exists(from)) {
+          throw Error("No such file or directory")
+        }
+      }
+      let parent_to = argv[2].split("/");
+      parent_to.pop();
+      if (!await program.session.fs.exists(make_path(sys.context.cwd, parent_to))) {
+        throw Error("No such destination directory")
+      }
+      let to = make_path(sys.context.cwd, argv[2].split("/"), is_dir);
+      await program.session.fs.mv(from, to);
+    })
+
     commands.register_command("write-file", async (argv, sys) => {
       if (!program.session) {
         throw Error("No username registered")
@@ -337,7 +371,7 @@ export function odd_commands(commands) {
         file_name = argv[2];
       }
 
-      const path = path(sys, file_name);
+      const path = make_path(sys.context.cwd, file_name);
       await program.session.fs.write(path, file);
     })
   }
