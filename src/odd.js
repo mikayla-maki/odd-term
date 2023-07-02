@@ -1,4 +1,4 @@
-import * as odd from "./odd.esm.min.js";
+import * as odd from "../libs/odd.esm.min.js";
 
 // TODO: Deduplicate this with the one in the main file.
 function saturating_sub(a, b) {

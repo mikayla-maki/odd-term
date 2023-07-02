@@ -15,7 +15,7 @@ def run(which="localhost", port=8081, server_class=HTTPServer, handler_class=Sim
     httpd.socket = context.wrap_socket (httpd.socket)
     httpd.serve_forever()
 
-print("https://" + sys.argv[1] + ":" + sys.argv[2] + "/term.odd.html")
+print("https://" + sys.argv[1] + ":" + sys.argv[2] + "/index.html")
 
 print("Making server for... " + sys.argv[1] + ":" + sys.argv[2])
 
